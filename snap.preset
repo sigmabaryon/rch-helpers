@@ -1,0 +1,11 @@
+# mkinitcpio preset file for the 'linux' package
+
+#ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-linux"
+
+PRESETS=('snap')
+
+snap_image="/boot/b/initramfs-linux.img"
+snap_uki="/boot/efi/EFI/Linux/arch-snap.efi"
+snap_options="--splash /usr/share/systemd/bootctl/splash-arch.bmp  --cmdline /etc/kernel/cmdline_snap"
+

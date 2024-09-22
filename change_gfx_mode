@@ -1,0 +1,68 @@
+#!/bin/bash
+
+function init {
+  # Will exit script if we would use an uninitialised variable
+  set -o nounset
+  # Will exit script when a simple command (not a control structure) fails
+  set -o errexit
+}
+
+function die {
+  local red
+  local reset
+  red=$(tput setaf 1)
+  reset=$(tput sgr0)
+  echo >&2 -e "${red}$*${reset}"
+  exit 1
+}
+
+function assert_running_as_root {
+  if [[ ${EUID} -ne 0 ]]; then
+    die "This script must be run as root!"
+  fi
+}
+
+function require_command {
+  command -v "$1" >/dev/null || die "Aborting: '$1' not found"
+}
+
+function change_gfx_mode {
+  MODE=$(supergfxctl -g 2>&1) || die "Failed to get current gfx mode: ${MODE}"
+  case "${MODE}" in
+  Hybrid)
+    local RES
+    echo "Switch: Hybrid -> Integrated"
+    # powerd daemon could conflict
+    RES=$(systemctl stop nvidia-powerd.service 2>&1) || die "Stopping nvidia-powerd failed: ${RES}"
+    while STATUS=$(systemctl is-active nvidia-powerd.service) && echo "${STATUS}" | grep -q "active"; do
+      sleep 1
+    done
+    RES=$(supergfxctl -m Integrated 2>&1) || die "Mode change operation unsuccessful: ${RES}"
+    sleep 1
+    ;;
+  Integrated)
+    local RES
+    echo "Switch: Integrated -> Hybrid"
+    RES=$(supergfxctl -m Hybrid 2>&1) || die "Mode change operation unsuccessful: ${RES}"
+    sleep 1
+    ;;
+  Vfio)
+    local RES
+    echo "Switch: Vfio -> Integrated"
+    RES=$(supergfxctl -m Integrated 2>&1) || die "Mode change operation unsuccessful: ${RES}"
+    sleep 1
+    ;;
+  *)
+    die "Unknown gfx mode ${MODE}"
+    ;;
+  esac
+}
+
+init
+
+assert_running_as_root
+
+require_command supergfxctl
+
+change_gfx_mode
+

@@ -1,0 +1,55 @@
+#!/bin/bash
+
+function init {
+  # Will exit script if we would use an uninitialised variable
+  set -o nounset
+  # Will exit script when a simple command (not a control structure) fails
+  set -o errexit
+}
+
+function die {
+  local red
+  local reset
+  red=$(tput setaf 1)
+  reset=$(tput sgr0)
+  echo >&2 -e "${red}$*${reset}"
+  exit 1
+}
+
+function assert_running_as_root {
+  if [[ ${EUID} -ne 0 ]]; then
+    die "This script must be run as root!"
+  fi
+}
+
+function require_command {
+  command -v "$1" >/dev/null || die "Aborting: '$1' not found"
+}
+
+init
+assert_running_as_root
+require_command arch-chroot
+
+# Define vars
+BTRFS="/dev/mapper/cryptroot"    # root btrfs filesystem
+ESP='/dev/disk/by-partlabel/ESP' # EFI System Partition
+SUBVOL="rch"                     # root subvolume
+
+# Mount the root fs
+BTRFS_ROOT=$(mktemp -d) || die "Failed to create temp dir"
+
+mount -o ssd,noatime,compress-force=zstd:1,subvol="${SUBVOL}" "${BTRFS}" "${BTRFS_ROOT}"
+mount -o ssd,noatime,compress-force=zstd:1,subvol="${SUBVOL}"_var_log "${BTRFS}" "${BTRFS_ROOT}"/var/log
+mount -o ssd,noatime,compress-force=zstd:1,subvol="${SUBVOL}"_var_cache "${BTRFS}" "${BTRFS_ROOT}"/var/cache
+mount -o ssd,noatime,nodatacow,compress-force=zstd:1,subvol="${SUBVOL}"_var_tmp "${BTRFS}" "${BTRFS_ROOT}"/var/tmp
+mount -o ssd,noatime,compress-force=zstd:1,subvol="${SUBVOL}"_var_spool "${BTRFS}" "${BTRFS_ROOT}"/var/spool
+mount -o ssd,noatime,compress-force=zstd:1,subvol="${SUBVOL}"_snapshots "${BTRFS}" "${BTRFS_ROOT}"/.snapshots
+mount -o ssd,noatime,compress-force=zstd:1,subvol=home "${BTRFS}" "${BTRFS_ROOT}"/home
+mount -o ssd,noatime,compress-force=zstd:1,subvol=keystore "${BTRFS}" "${BTRFS_ROOT}"/keystore
+mount -o ssd,noatime,compress-force=zstd:1,subvol=flatpak "${BTRFS}" "${BTRFS_ROOT}"/var/lib/flatpak
+mount -o ssd,noatime,compress-force=zstd:1,subvol=data_local "${BTRFS}" "${BTRFS_ROOT}"/data/local
+mount -o ssd,noatime,compress-force=zstd:1,subvol=data_main "${BTRFS}" "${BTRFS_ROOT}"/data/main
+
+mount -o fmask=0137,dmask=0027 "${ESP}" "${BTRFS_ROOT}"/boot/efi
+
+arch-chroot ${BTRFS_ROOT} /bin/bash

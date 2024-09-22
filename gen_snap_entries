@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# To be used as post transaction pacman hook
+
+function init {
+  # Will exit script if we would use an uninitialised variable
+  set -o nounset
+  # Will exit script when a simple command (not a control structure) fails
+  set -o errexit
+}
+
+function die {
+  local red
+  local reset
+  red=$(tput setaf 1)
+  reset=$(tput sgr0)
+  echo >&2 -e "${red}$*${reset}"
+  exit 1
+}
+
+function assert_running_as_root {
+  if [[ ${EUID} -ne 0 ]]; then
+    die "This script must be run as root!"
+  fi
+}
+
+function require_command {
+  command -v "$1" >/dev/null || die "Aborting: '$1' not found"
+}
+
+init
+
+assert_running_as_root
+
+require_command yabsnap
+require_command rsync
+require_command ukify
+
+# Define vars
+LUKS_UUID="fcb91b18-78bb-420d-8677-407eafc49431"  # root luks uuid
+LUKS_NAME="cryptroot"                             # root luks name
+SUBVOL="rch"                                      # root subvolume
+UKI_PRESET="/usr/local/share/helpers/snap.preset" # uki preset file for backups, also defines the cmdline
+
+# Mount the root fs
+BTRFS="/dev/mapper/${LUKS_NAME}"
+BTRFS_ROOT=$(mktemp -d) || die "Failed to create temp dir"
+mount -o subvolid=5 "${BTRFS}" "${BTRFS_ROOT}"
+
+# Get latest yabsnap snapshot
+# NOTE: considering yabsnap config to be the same name as the root subvolume
+SNAP=$(yabsnap list-json | jq -c 'select(.trigger=="I" and (.config_file | endswith("'$SUBVOL'.conf")))' | awk 'END{print}' | jq -r '.file.prefix + .file.timestamp')
+
+# Create new subvolumes based on the snapshots
+# TODO: Check for errors when handling subvolume operations
+btrfs subvolume snapshot "${SNAP}" "${BTRFS_ROOT}"/"${SUBVOL}"-snap-new || die "Failed to create backup snapshot"
+
+btrfs subvolume delete "${BTRFS_ROOT}"/"${SUBVOL}"-snap || true
+
+mv "${BTRFS_ROOT}"/"${SUBVOL}"-snap-new "${BTRFS_ROOT}"/"${SUBVOL}"-snap
+
+# Configure new subvolumes to be bootable
+sed -i "s/subvol=\/${SUBVOL}  /subvol=\/${SUBVOL}-snap/" "${BTRFS_ROOT}"/"${SUBVOL}"-snap/etc/fstab
+
+# CMDLINE for preset
+echo "rd.luks.name=${LUKS_UUID}=${LUKS_NAME} root=${BTRFS} rootflags=subvol=${SUBVOL}-snap rw zswap.enabled=0" > /etc/kernel/cmdline_snap
+
+# Generate UKI
+mkinitcpio -p "${UKI_PRESET}"
+
+# Cleanup
+umount "${BTRFS_ROOT}"
+rmdir "${BTRFS_ROOT}"

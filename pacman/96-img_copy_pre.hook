@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Depends = rsync
+Description = Backing up pre /boot images...
+When = PreTransaction
+Exec = /usr/bin/bash -c 'rsync -ahp --mkpath --delete --exclude "efi" --exclude "b" /boot/* /boot/b'
+NeedsTargets
+AbortOnFail
