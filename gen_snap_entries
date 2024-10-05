@@ -63,7 +63,7 @@ mv "${BTRFS_ROOT}"/"${SUBVOL}"-snap-new "${BTRFS_ROOT}"/"${SUBVOL}"-snap
 sed -i "s/subvol=\/${SUBVOL}  /subvol=\/${SUBVOL}-snap/" "${BTRFS_ROOT}"/"${SUBVOL}"-snap/etc/fstab
 
 # CMDLINE for preset
-echo "rd.luks.name=${LUKS_UUID}=${LUKS_NAME} root=${BTRFS} rootflags=subvol=${SUBVOL}-snap rw zswap.enabled=0" > /etc/kernel/cmdline_snap
+echo "rd.luks.name=${LUKS_UUID}=${LUKS_NAME} root=${BTRFS} rootflags=subvol=${SUBVOL}-snap rw zswap.enabled=0 audit=1 lsm=landlock,lockdown,yama,integrity,apparmor,bpf" > /etc/kernel/cmdline_snap
 
 # Generate UKI
 mkinitcpio -p "${UKI_PRESET}"

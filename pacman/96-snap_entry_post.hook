@@ -10,4 +10,3 @@ Description = Triggering subvolume backup post-installation snapshots...
 When = PostTransaction
 Exec = /usr/local/bin/gen_snap_entries
 NeedsTargets
-AbortOnFail
